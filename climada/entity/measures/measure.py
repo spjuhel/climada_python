@@ -21,9 +21,16 @@ Define Measure class.
 
 from __future__ import annotations
 
+import dataclasses
+
 from pandas.tseries.offsets import BaseOffset
 
-from climada.engine.impact import Impact
+from climada.entity.measures.helper import (
+    helper_exposure,
+    helper_hazard,
+    helper_impfset,
+    identity_function,
+)
 
 __all__ = ["Measure"]
 
@@ -33,7 +40,14 @@ import logging
 from functools import wraps
 from typing import TYPE_CHECKING, Any, Optional, Tuple, TypeVar
 
-from climada.entity.measures.measure_config import MeasureConfig
+import pandas as pd
+
+from climada.entity.measures.measure_config import (
+    ExposuresModifierConfig,
+    HazardModifierConfig,
+    ImpfsetModifierConfig,
+    MeasureConfig,
+)
 
 from .cost_income import CostIncome
 
@@ -52,18 +66,6 @@ if TYPE_CHECKING:
 LOGGER = logging.getLogger(__name__)
 
 # TODO: risk transfer?
-
-
-# Note for review:
-# This function will moved in helper.py in a future PR which will
-# add I/O based on MeasureConfig dataclasses
-def identity_function(x: T, **_kwargs: Any) -> T:
-    """Identity function
-
-    Returns the provided parameter. Usefull to design measures without effect
-    on some of the risk components (Hazard, Exposures, Impact Function)
-    """
-    return x
 
 
 def allow_kwargs(func):
@@ -226,6 +228,37 @@ class Measure:
         """
 
         return self._config is not None
+
+    @classmethod
+    def from_config(cls, config: MeasureConfig) -> "Measure":
+        impfset_change = helper_impfset(config.impfset_modifier)
+        exp_change = helper_exposure(config.exposures_modifier)
+        haz_change = helper_hazard(config.hazard_modifier)
+        return cls(
+            name=config.name,
+            exposures_changes=exp_change,
+            impfset_changes=impfset_change,
+            hazard_changes=haz_change,
+            cost_income=CostIncome.from_config(config.cost_income),
+            implementation_duration=(
+                pd.tseries.frequencies.to_offset(config.implementation_duration)
+                if config.implementation_duration is not None
+                else None
+            ),
+            color_rgb=config.color_rgb,
+            _config=config,
+        )
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Measure":
+        return cls.from_config(MeasureConfig.from_dict(d))
+
+    @classmethod
+    def from_yaml(cls, path: str) -> "Measure":
+        import yaml
+
+        with open(path) as f:
+            return cls.from_dict(yaml.safe_load(f)["measures"][0])
 
     def apply_exposures_changes(
         self, exposures: Exposures, enforce_copy: bool = True, **kwargs
