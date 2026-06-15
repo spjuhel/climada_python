@@ -31,9 +31,9 @@ import pandas as pd
 import climada.util.hdf5_handler as u_hdf5
 from climada.entity.exposures.base import Exposures
 from climada.entity.impact_funcs import ImpactFunc, ImpactFuncSet
-from climada.entity.measures.base import Measure
 from climada.entity.measures.cost_income import CostIncome
 from climada.entity.measures.helper import composite_fun
+from climada.entity.measures.measure import Measure
 from climada.entity.measures.measure_config import ImpfsetModifierConfig, MeasureConfig
 from climada.hazard.base import Hazard
 from climada.util.string_parsers import parse_mapping_string, parse_range

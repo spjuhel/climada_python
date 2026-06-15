@@ -33,7 +33,7 @@ import pandas as pd
 
 from climada.entity.exposures import Exposures
 from climada.entity.impact_funcs import ImpactFuncSet
-from climada.entity.measures.base import Measure
+from climada.entity.measures.measure import Measure
 from climada.hazard import Hazard
 
 LOGGER = logging.getLogger(__name__)
