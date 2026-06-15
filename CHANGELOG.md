@@ -12,12 +12,15 @@ Code freeze date: YYYY-MM-DD
 
 ### Added
 
-- Better type hints and overloads signatures for `ImpactFuncSet` [#1250](https://github.com/CLIMADA-project/climada_python/pull/1250)
-- Add inter- and extrapolation options to `ImpactFreqCurve` with method `interpolate` [#1252](https://github.com/CLIMADA-project/climada_python/pull/1252)
-- Adds `MeasureConfig` and related dataclasses for new `Measure` object retrocompatibility and (de)serialization capabilities [#1276](https://github.com/CLIMADA-project/climada_python/pull/1276)
 - Adds new `Measure` class, implementing adaptation measures as closures.
+- Support for ensemble forecast data as hazard via `HazardForecast` and `ImpactForecast`, see `doc.user_guide.climada_engine_ImpactForecast.ipynb` [#1115](https://github.com/CLIMADA-project/climada_python/pull/)
+- Better type hints and overloads signatures for ImpactFuncSet [#1250](https://github.com/CLIMADA-project/climada_python/pull/1250)
+- Adds `MeasureConfig` and related dataclasses for new `Measure` object retrocompatibility and (de)serialization capabilities [#1276](https://github.com/CLIMADA-project/climada_python/pull/1276)
+- Add inter- and extrapolation options to `ImpactFreqCurve` with method `interpolate` [#1252](https://github.com/CLIMADA-project/climada_python/pull/1252)
+- Add `trajectory` module to ease the handling of multiple risk assessment at different point in time, and enable interpolation in between. [#1197](https://github.com/CLIMADA-project/climada_python/pull/1197), [#1198](https://github.com/CLIMADA-project/climada_python/pull/1198), [#1199](https://github.com/CLIMADA-project/climada_python/pull/1199), [#1200](https://github.com/CLIMADA-project/climada_python/pull/1197), [#1201](https://github.com/CLIMADA-project/climada_python/pull/1197)
 
 ### Changed
+
 - Updated Impact Calculation Tutorial (`doc.climada_engine_Impact.ipynb`) [#1095](https://github.com/CLIMADA-project/climada_python/pull/1095).
 - Makes current `measure` module a legacy module, moving it to `_legacy_measure`, to retain compatibility with `CostBenefit` class and various tests. [#1274](https://github.com/CLIMADA-project/climada_python/pull/1274)
 
@@ -25,6 +28,7 @@ Code freeze date: YYYY-MM-DD
 
 - Fixed asset count in impact logging message [#1195](https://github.com/CLIMADA-project/climada_python/pull/1195).
 - `Hazard.from_raster_xarray` now returns a sparse matrix instead of a sparse array [#1261](https://github.com/CLIMADA-project/climada_python/pull/1261).
+- Fix TCTracks.from_FAST duplicate loading from year loop [#1269](github.com/CLIMADA-project/climada_python/pull/1269)
 
 ### Deprecated
 - `Impact.calc_freq_curve()` should not be given the parameter `return_per`. Use the parameter `return_periods` in `Impact.calc_freq_curve().interpolate()` instead.
