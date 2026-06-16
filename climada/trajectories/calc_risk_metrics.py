@@ -255,7 +255,11 @@ class CalcRiskMetricsPoints:
 
         """
 
-        metric_df = pd.DataFrame(self.per_date_eai, index=self._date_idx)
+        metric_df = pd.DataFrame(
+            self.per_date_eai,
+            index=self._date_idx,
+            columns=self.snapshots[0].exposure.gdf.index,
+        )
         metric_df = metric_df.reset_index().melt(
             id_vars=DATE_COL_NAME, var_name=COORD_ID_COL_NAME, value_name=RISK_COL_NAME
         )
