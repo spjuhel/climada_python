@@ -101,8 +101,8 @@ class CategorySpace:
 
         del self._registry[category]
 
-    def register(self, category: "CriteriaCategory") -> None:
-        if category.name in self._registry:
+    def register(self, category: "CriteriaCategory", overwrite: bool = False) -> None:
+        if not overwrite and category.name in self._registry:
             raise ValueError(f"Category '{category.name}' already exists in space.")
         self._registry[category.name] = category
 
@@ -110,6 +110,7 @@ class CategorySpace:
         self,
         name: CategoryName,
         parent_cats: Optional[Union[CategoryLike, Sequence[CategoryLike]]] = None,
+        children_cats: Optional[Union[CategoryLike, Sequence[CategoryLike]]] = None,
         category_type: Optional[str] = None,
         weight: Optional[float] = None,
         overwrite: bool = False,
@@ -127,6 +128,7 @@ class CategorySpace:
         return CriteriaCategory(
             name,
             parents=parent_cats,
+            children=children_cats,
             category_type=category_type,
             weight=weight,
             overwrite=overwrite,
@@ -260,7 +262,9 @@ class CategorySpace:
             print(f"Categories present: {list(self._registry.keys())}")
             return
 
-        print("\n--- Criteria Category Hierarchy ---")
+        print("--- Criteria Category Hierarchy ---\n")
+        print("Read as `[Category metatype]: name (weight)`\n")
+        print("|")
 
         # 2. Use a recursive helper function to print the tree starting from roots
         def print_node_recursive(
@@ -275,11 +279,14 @@ class CategorySpace:
             print(
                 prefix
                 + connector
+                + "["
                 + str(node.category_type)
+                + "]"
                 + ": "
                 + node.name
-                + " category weight: "
+                + " ("
                 + str(self.weights[node.name])
+                + ")"
             )
 
             # Determine the prefix for the children
@@ -302,7 +309,7 @@ class CategorySpace:
             print_node_recursive(root, "", is_last_root)
             if not is_last_root:
                 # Add a blank line between separate root trees for clarity
-                print()
+                print("|")
 
 
 class CriteriaCategory(WeightedItem):
@@ -332,10 +339,11 @@ class CriteriaCategory(WeightedItem):
         self,
         name: CategoryName,
         parents: Optional[Union[CategoryLike, Sequence[CategoryLike]]] = None,
+        children: Optional[Union[CategoryLike, Sequence[CategoryLike]]] = None,
         category_type: Optional[str] = None,
         weight: Optional[float] = None,
         space: Optional[CategorySpace] = None,
-        overwrite: Optional[bool] = False,
+        overwrite: bool = False,
     ) -> None:
         """
         Initializes a new CriteriaCategory.
@@ -371,9 +379,12 @@ class CriteriaCategory(WeightedItem):
                     )
                 return
 
-        self.space.register(self)
+        self.space.register(self, overwrite)
         if parents:
             self.add_parents(parents)
+
+        if children:
+            self.add_children(children)
 
     @property
     def effective_weight(self):
@@ -452,6 +463,44 @@ class CriteriaCategory(WeightedItem):
             check_parents = [cast(CategoryLike, check_parents)]
 
         return check_parents == self._parents_names
+
+    def add_children(
+        self, children_names: Union[CategoryLike, Sequence[CategoryLike]]
+    ) -> None:
+        """
+        Internal helper to resolve and establish children links.
+
+        Parameters
+        ----------
+        children_names : Union[CategoryLike, Sequence[CategoryLike]]
+            The children criteria(s) to link.
+
+        Raises
+        ------
+        ValueError
+            If any children category specified by name is not found.
+        TypeError
+            If an item in the children list is not a string or CriteriaCategory object.
+        """
+        if not isinstance(children_names, Sequence):
+            children_names = [children_names]
+
+        for c_name in children_names:
+            child_obj: Optional[CriteriaCategory] = None
+
+            if isinstance(c_name, str):
+                child_obj = self.space.get(c_name)
+                if not child_obj:
+                    raise ValueError(f"Child criterion '{c_name}' not found.")
+            elif isinstance(c_name, CriteriaCategory):
+                child_obj = c_name
+            else:
+                raise TypeError(
+                    "Children must be a string (category name) or a CriteriaCategory object."
+                )
+
+            self._children.add(child_obj)
+            child_obj.parents.add(self)
 
     def add_parents(
         self, parent_names: Union[CategoryLike, Sequence[CategoryLike]]
@@ -541,9 +590,11 @@ class CriteriaCategory(WeightedItem):
 
     def __repr__(self, indent=0) -> str:
         parent_names = sorted([p.name for p in self.parents])
-        parent_str = f" Parents: {', '.join(parent_names)}" if parent_names else "none"
+        parent_str = (
+            f" Parents: [{', '.join(parent_names)}]" if parent_names else "No parents"
+        )
         indent_space = " " * indent
-        return f"""{indent_space}name: {self.name} weight: {self.weight} type: {self.category_type}\n{indent_space}parents: {parent_str}"""
+        return f"""{indent_space}* {self.name} :: weight(effective)={self.weight}({self.effective_weight}), metatype={self.category_type}, {parent_str}"""
 
 
 def create_criteria_category(

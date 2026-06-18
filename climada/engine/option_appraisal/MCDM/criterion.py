@@ -88,37 +88,45 @@ class Criterion(CategorizedObject, WeightedItem):
             f"{indent_space}categories={{\n{formatted_categories}\n{indent_space}}},\n"
             f"{indent_space}obj_maximise={self.obj_maximize}\n"
             f"{indent_space}base_weight={self.weight}\n"
-            f"{indent_space}average_weight_from_categories={self.weight_from_category}\n"
+            f"{indent_space}average_weight_from_categories={self.category_weight}\n"
             f")"
         )
 
-    @property
-    def category_weights(self):
-        return {cat.name: cat.weight for cat in self.categories}
+    def effective_weight(self, categories_influence=0.5):
+        return (
+            self.weight * (1 - categories_influence)
+            + self.category_effective_weight * categories_influence
+        )
 
     @property
-    def weight_from_category(self):
+    def category_effective_weight(self):
         return np.array([cat.effective_weight for cat in self.categories]).prod() ** (
             1 / len(self.categories)
         )
+
+    @property
+    def categories_weight_profile(self):
+        return {cat.name: cat.weight for cat in self.categories}
 
 
 class CriteriaSet:
     def __init__(
         self,
         criteria: list[Criterion],
-        category_weights: dict[str, float] | None = None,
-        criteria_weights: dict[str, float] | None = None,
+        # category_weights: dict[str, float] | None = None,
+        # criteria_weights: dict[str, float] | None = None,
     ) -> None:
         self.criteria = criteria
         self._category_space = criteria[0].category_space
         # self.criteria_base_weights = criteria_weights
-        self.category_weights = category_weights
+        # self.category_weights = category_weights
+
+    ############################### Display and representation ######################################
 
     def display(self):
         lines = []
 
-        total_weights = self.criteria_total_weights(active_only=False)
+        total_weights = self.effective_weights(non_zero_only=False)
 
         active = [c for c in self.criteria if total_weights[c.name] > 0]
         inactive = [c for c in self.criteria if total_weights[c.name] == 0]
@@ -149,11 +157,11 @@ class CriteriaSet:
             total_sum = sum(total_weights[c.name] for c in active)
             lines.append(f"\nCriteria{' ' * (max_len)}Weights")
             lines.append("-" * 8 + " " * (max_len) + "-" * 9)
-            total_weights = self.criteria_total_weights()
+            total_weights = self.effective_weights()
             for crit in sorted(active, key=lambda c: -total_weights[c.name]):
                 total = total_weights[crit.name]
                 effective = total / total_sum if total_sum > 0 else 0.0
-                bar = _weight_bar(effective, width=len(active) * 2)
+                bar = _weight_bar(effective, width=bar_width)
                 lines.append(
                     f"  {crit.name:<{max_len+4}}  "
                     f"base={crit.weight:.5f}  total={total_weights[crit.name]:.5f}  "
@@ -163,6 +171,15 @@ class CriteriaSet:
 
             lines.append("")
         print("\n".join(lines))
+
+    def display_space(self) -> None:
+        """
+        Prints the entire category hierarchy registered in the system using ASCII art.
+        It handles multiple roots and is robust against multiple inheritance.
+        """
+        self.category_space.display()
+
+    ################################ Constructors ######################################
 
     @classmethod
     def from_risk_metrics(
@@ -185,7 +202,13 @@ class CriteriaSet:
         ):
             if risk_metrics[DATE_DEFAULT_COLNAME].nunique() > 1:
                 LOGGER.info(
-                    f"'{DATE_DEFAULT_COLNAME}' column with more than one value found in risk metric dataframe. Will apply default treatment: will define a category '{PRESENT_DATE_DEFAULT_COLNAME}' for earliest date and '{FUTURE_DATE_DEFAULT_COLNAME}' for latest one. You can make every date a category by explicitly including the '{DATE_DEFAULT_COLNAME}' column in the category_types."
+                    f"'{DATE_DEFAULT_COLNAME}' column with more than one value found"
+                    f" in risk metric dataframe. Will apply default treatment:"
+                    f" will define a category '{PRESENT_DATE_DEFAULT_COLNAME}'"
+                    f" for earliest date and '{FUTURE_DATE_DEFAULT_COLNAME}'"
+                    " for latest one. You can make every date a category"
+                    f" by explicitly including the '{DATE_DEFAULT_COLNAME}'"
+                    " column in the category_types."
                 )
                 max_date = risk_metrics[DATE_DEFAULT_COLNAME].max()
                 min_date = risk_metrics[DATE_DEFAULT_COLNAME].min()
@@ -214,7 +237,12 @@ class CriteriaSet:
         for col in cols_not_used:
             if risk_metrics[col].nunique() > 1:
                 raise ValueError(
-                    f"Column {col} is not defined as a category type or a criteria nor is excluded. As it has more that one unique value, I don't know how to handle it. Either add it to excluded_value_cols if it is a criterion values column you do not want or conversely to criteria_cols. If it is an identifier column either add it to category_type or subselect the dataframe to have a unique value."
+                    f"Column {col} is not defined as a category type or a criteria"
+                    " nor is excluded. As it has more that one unique value, "
+                    "I don't know how to handle it. Either add it to excluded_value_cols"
+                    " if it is a criterion values column you do not want or conversely"
+                    "to criteria_cols. If it is an identifier column either add it to"
+                    " category_type or subselect the dataframe to have a unique value."
                 )
 
         risk_metrics = risk_metrics[
@@ -262,18 +290,20 @@ class CriteriaSet:
 
         return cls(criteria=crits)
 
+    ############################### Accessors ######################################
+
     @property
     def category_space(self):
         return self._category_space
 
     @property
-    def criteria(self):
+    def criteria(self) -> list[Criterion]:
         return self._criteria
 
-    @criteria.setter
-    def criteria(self, value, /):
-        self._check_consistency(value)
-        self._criteria = [crit for crit in value]
+    def get_criteria(self, name):
+        for crit in self.criteria:
+            if crit.name == name:
+                return crit
 
     @property
     def criteria_names(self):
@@ -288,60 +318,46 @@ class CriteriaSet:
         return np.array([1 if crit.obj_maximize else -1 for crit in self.criteria])
 
     @property
-    def criteria_with_weight(self):
-        return list(self.criteria_total_weights().keys())
+    def criteria_weights(self):
+        return {crit.name: crit.weight for crit in self.criteria}
 
-    def add_criteria(self, criteria: Criterion | list[Criterion]):
-        if not isinstance(criteria, list):
-            criteria = [criteria]
+    @property
+    def criteria_effective_weights(self):
+        return {crit.name: crit.effective_weight for crit in self.criteria}
 
-        # TODO: Warn duplicates
-        # Overwrite?
-        criteria = [c for c in criteria if c.name not in self.criteria_names]
-        self.criteria = self.criteria + criteria
+    @property
+    def categories_weight_profile(self):
+        return self.category_space.weights
 
-    @staticmethod
-    def _check_consistency(criteria):
-        if not isinstance(criteria, list):
-            raise ValueError("Criteria must be a list of Criterion.")
+    @property
+    def categories_effective_weights(self):
+        return self.category_space.effective_weights
 
-        if not all([isinstance(criterion, Criterion) for criterion in criteria]):
-            raise ValueError("Criteria must be a list of Criterion.")
+    def weights_profile(
+        self, non_zero_only=True
+    ) -> tuple[dict[str, float], dict[str, float]]:
+        crit_weights, cat_weights = (
+            self.criteria_weights,
+            self.categories_weight_profile,
+        )
+        if non_zero_only:
+            crit_weights = {
+                crit: weight for crit, weight in crit_weights.items() if weight > 0
+            }
+            cat_weights = {
+                cat: weight for cat, weight in cat_weights.items() if weight > 0
+            }
 
-        first_index = criteria[0].data.index.sort_values()
-        mismatched_indices_info = []
+        return crit_weights, cat_weights
 
-        # Iterate through the criteria starting from the second element (index 1)
-        for i, criterion in enumerate(criteria[1:]):
-            current_index = criterion.data.index.sort_values()
+    @property
+    def selected_criteria(self):
+        return list(self.effective_weights().keys())
 
-            if not first_index.equals(current_index):
-                # Find the specific differences (elements in one index but not the other)
-                diff_1 = first_index.difference(current_index)
-                diff_2 = current_index.difference(first_index)
-
-                mismatched_indices_info.append(
-                    f"Criterion {i + 1} (Name: {criterion.name if hasattr(criterion, 'name') else 'N/A'}) "
-                    f"has an index mismatch with Criterion 0."
-                    f"\n  -> Unique to Criterion 0: {list(diff_1)}"
-                    f"\n  -> Unique to Criterion {i + 1}: {list(diff_2)}"
-                )
-
-        if mismatched_indices_info:
-            infos = "\n".join(mismatched_indices_info)
-            raise ValueError(
-                "All criteria must have the same index (options) to be combined."
-                f"\n\nDetails of Mismatches:\n\n{infos}"
-            )
-
-        if not all([criteria[0].space is criterion.space for criterion in criteria]):
-            raise ValueError("Criteria must share the same space of categories.")
-
-    def criteria_total_weights(
+    def effective_weights(
         self,
-        categories_influence: float = 0.5,
-        base_weight_influence: float = 0.5,
-        active_only: bool = True,
+        influence_from_categories: Optional[float] = None,
+        non_zero_only: bool = True,
     ) -> dict[str, float]:
         """Compute weighted combination of base weight and category-derived weight.
 
@@ -352,7 +368,7 @@ class CriteriaSet:
             ``base_weight_influence``.
         base_weight_influence : float
             Weight given to the criterion's base weight.
-        active_only : bool
+        non_zero_only : bool
             If True (default), only criteria with non-zero total weight are returned.
 
         Returns
@@ -360,77 +376,25 @@ class CriteriaSet:
         dict[str, float]
             Mapping of criterion name to total weight.
         """
-        if categories_influence + base_weight_influence != 1.0:
+        if influence_from_categories is None:
+            influence_from_categories = 0.5
+
+        if influence_from_categories > 1.0 or influence_from_categories < 0.0:
             raise ValueError(
                 "categories_influence and base_weight_influence must sum to 1."
             )
 
-        weights = {
-            crit.name: crit.weight * base_weight_influence
-            + crit.weight_from_category * categories_influence
-            for crit in self.criteria
-        }
-
-        if active_only:
-            return {k: v for k, v in weights.items() if v > 0}
-        return weights
+        base_weight_influence = 1 - influence_from_categories
 
         weights = {
             crit.name: crit.weight * base_weight_influence
-            + crit.weight_from_category * categories_influence
+            + crit.category_effective_weight * influence_from_categories
             for crit in self.criteria
         }
 
-        if active_only:
+        if non_zero_only:
             return {k: v for k, v in weights.items() if v > 0}
         return weights
-
-    @property
-    def criteria_base_weights(self):
-        return {v.name: v.weight for v in self.criteria}
-
-    def get_criteria(self, name):
-        for crit in self.criteria:
-            if crit.name == name:
-                return crit
-
-    @property
-    def category_effective_weights(self):
-        return self.category_space.effective_weights
-
-    def set_criterion_weight(self, name: str, weight) -> None:
-        """Set the base weight of a single criterion.
-
-        Parameters
-        ----------
-        name : str
-            Criterion name.
-        weight : float or str
-            New weight value.
-        """
-        crit = self.get_criteria(name)
-        if crit is None:
-            raise KeyError(f"Criterion '{name}' not found.")
-        crit.weight = weight
-
-    def reset_category_weights(self) -> None:
-        self.category_space.reset_weights()
-
-    def all_equal_category_weights(self) -> None:
-        self.category_space.reset_weights(weight=1.0)
-
-    def update_category_weights(self, weights: dict[str, float]) -> None:
-        """Set the weight of a single category.
-
-        Parameters
-        ----------
-        name : str
-            Category name.
-        weight : float or str
-            New weight value.
-        """
-        for name, weight in weights.items():
-            self.category_space.set_weight(name, weight)
 
     def get_criteria_by_category(
         self,
@@ -474,7 +438,7 @@ class CriteriaSet:
         pd.DataFrame
             Columns are active criterion names, index is options.
         """
-        active_names = self.criteria_with_weight
+        active_names = self.selected_criteria
         return self.criteria_matrix[active_names]
 
     def normalized_criteria_matrix(
@@ -536,7 +500,7 @@ class CriteriaSet:
         matrix = self.normalized_criteria_matrix(scaler=scaler)
         active_criteria = [c for c in self.criteria if c.name in matrix.columns]
 
-        total_weights = self.criteria_total_weights()
+        total_weights = self.effective_weights()
         raw_weights = np.array([total_weights[c.name] for c in active_criteria])
         weights = raw_weights / raw_weights.sum()  # normalise to sum=1
 
@@ -549,12 +513,130 @@ class CriteriaSet:
             ascending=False
         )
 
-    def display_space(self) -> None:
+    ############################### Setters and co ######################################
+
+    @criteria.setter
+    def criteria(self, value, /):
+        self._check_consistency(value)
+        self._criteria = [crit for crit in value]
+
+    def add_criteria(self, criteria: Criterion | list[Criterion]):
+        if not isinstance(criteria, list):
+            criteria = [criteria]
+
+        # TODO: Warn duplicates
+        # Overwrite?
+        criteria = [c for c in criteria if c.name not in self.criteria_names]
+        self.criteria = self.criteria + criteria
+
+    def set_criterion_weight(self, name: str, weight) -> None:
+        """Set the base weight of a single criterion.
+
+        Parameters
+        ----------
+        name : str
+            Criterion name.
+        weight : float or str
+            New weight value.
         """
-        Prints the entire category hierarchy registered in the system using ASCII art.
-        It handles multiple roots and is robust against multiple inheritance.
+        crit = self.get_criteria(name)
+        if crit is None:
+            raise KeyError(f"Criterion '{name}' not found.")
+        crit.weight = weight
+
+    def reset_criteria_weights(self) -> None:
+        for crit in self.criteria:
+            crit.weight = 0
+
+    def reset_category_weights(self) -> None:
+        self.category_space.reset_weights()
+
+    def all_equal_category_weights(self) -> None:
+        self.category_space.reset_weights(weight=1.0)
+
+    def update_category_weights(self, weights: dict[str, float]) -> None:
+        """Set the weight of a single category.
+
+        Parameters
+        ----------
+        name : str
+            Category name.
+        weight : float or str
+            New weight value.
         """
-        self.category_space.display()
+        for name, weight in weights.items():
+            self.category_space.set_weight(name, weight)
+
+    def update_weight_profile(
+        self,
+        criteria_weights: Optional[dict[str, float]] = None,
+        category_weights: Optional[dict[str, float]] = None,
+        reset_crit_weights: bool = False,
+        reset_cat_weights: bool = False,
+    ) -> None:
+        """Update base weights of criteria and/or categories in one call.
+
+        Mirrors the structure returned by ``weights_profile``. Either
+        argument can be omitted to leave that side unchanged.
+
+        Parameters
+        ----------
+        criteria_weights : dict[str, float], optional
+            Mapping of criterion name to new base weight.
+        category_weights : dict[str, float], optional
+            Mapping of category name to new weight.
+        """
+        if reset_crit_weights:
+            self.reset_criteria_weights()
+
+        if reset_cat_weights:
+            self.reset_category_weights()
+
+        if criteria_weights is not None:
+            for name, weight in criteria_weights.items():
+                self.set_criterion_weight(name, weight)
+
+        if category_weights is not None:
+            self.update_category_weights(category_weights)
+
+    ############################### Utils ######################################
+
+    @staticmethod
+    def _check_consistency(criteria):
+        if not isinstance(criteria, list):
+            raise ValueError("Criteria must be a list of Criterion.")
+
+        if not all([isinstance(criterion, Criterion) for criterion in criteria]):
+            raise ValueError("Criteria must be a list of Criterion.")
+
+        first_index = criteria[0].data.index.sort_values()
+        mismatched_indices_info = []
+
+        # Iterate through the criteria starting from the second element (index 1)
+        for i, criterion in enumerate(criteria[1:]):
+            current_index = criterion.data.index.sort_values()
+
+            if not first_index.equals(current_index):
+                # Find the specific differences (elements in one index but not the other)
+                diff_1 = first_index.difference(current_index)
+                diff_2 = current_index.difference(first_index)
+
+                mismatched_indices_info.append(
+                    f"Criterion {i + 1} (Name: {criterion.name if hasattr(criterion, 'name') else 'N/A'}) "
+                    f"has an index mismatch with Criterion 0."
+                    f"\n  -> Unique to Criterion 0: {list(diff_1)}"
+                    f"\n  -> Unique to Criterion {i + 1}: {list(diff_2)}"
+                )
+
+        if mismatched_indices_info:
+            infos = "\n".join(mismatched_indices_info)
+            raise ValueError(
+                "All criteria must have the same index (options) to be combined."
+                f"\n\nDetails of Mismatches:\n\n{infos}"
+            )
+
+        if not all([criteria[0].space is criterion.space for criterion in criteria]):
+            raise ValueError("Criteria must share the same space of categories.")
 
 
 def _weight_bar(weight: float, width: int = 8) -> str:
