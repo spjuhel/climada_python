@@ -262,8 +262,10 @@ class CategorySpace:
             print(f"Categories present: {list(self._registry.keys())}")
             return
 
-        print("--- Criteria Category Hierarchy ---\n")
-        print("Read as `[Category metatype]: name (weight)`\n")
+        print("--- Criteria Category Space Hierarchy ---\n")
+        print(
+            "Read as `[Category metatype]: name effective weight (specific weight)`\n"
+        )
         print("|")
 
         # 2. Use a recursive helper function to print the tree starting from roots
@@ -284,6 +286,8 @@ class CategorySpace:
                 + "]"
                 + ": "
                 + node.name
+                + " "
+                + str(self.effective_weights[node.name])
                 + " ("
                 + str(self.weights[node.name])
                 + ")"

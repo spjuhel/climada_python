@@ -88,7 +88,7 @@ class Criterion(CategorizedObject, WeightedItem):
             f"{indent_space}categories={{\n{formatted_categories}\n{indent_space}}},\n"
             f"{indent_space}obj_maximise={self.obj_maximize}\n"
             f"{indent_space}base_weight={self.weight}\n"
-            f"{indent_space}average_weight_from_categories={self.category_weight}\n"
+            f"{indent_space}categories_effective_weight={self.category_effective_weight}\n"
             f")"
         )
 
@@ -140,7 +140,7 @@ class CriteriaSet:
         lines.append("=" * 60)
 
         # Category weights section
-        lines.append("\nCategories")
+        lines.append("\nCategories by category type")
         lines.append("-" * 60)
         cat_types = self.category_space.category_types
         for cat_type in sorted(t for t in cat_types if t is not None):
@@ -151,12 +151,21 @@ class CriteriaSet:
                 lines.append(f"    {cat.name:<30}  {bar}  {cat.weight:.3f}")
 
         # Criteria weights section
+        lines.append("\nCriteria")
+        lines.append("-" * 60)
+        if len(active) == 0:
+            lines.append(
+                "No active criteria (all weights are 0).\n"
+                "Reminder: a criterion's category-derived weight is the geometric\n"
+                "mean of its categories' effective weights, so it is zero if ANY\n"
+                "one of its associated categories has zero weight.\n"
+            )
         if len(active) > 0:
             bar_width = len(active) if len(active) < 50 else 50
             max_len = max(len(crit.name) for crit in active)
             total_sum = sum(total_weights[c.name] for c in active)
-            lines.append(f"\nCriteria{' ' * (max_len)}Weights")
-            lines.append("-" * 8 + " " * (max_len) + "-" * 9)
+            lines.append(f"\nCriteria name{' ' * (max_len)}Weights")
+            lines.append("-" * 13 + " " * (max_len) + "-" * 9)
             total_weights = self.effective_weights()
             for crit in sorted(active, key=lambda c: -total_weights[c.name]):
                 total = total_weights[crit.name]
@@ -554,7 +563,7 @@ class CriteriaSet:
     def all_equal_category_weights(self) -> None:
         self.category_space.reset_weights(weight=1.0)
 
-    def update_category_weights(self, weights: dict[str, float]) -> None:
+    def update_category_weights(self, weights: dict[str, float], reset=False) -> None:
         """Set the weight of a single category.
 
         Parameters
@@ -564,6 +573,9 @@ class CriteriaSet:
         weight : float or str
             New weight value.
         """
+        if reset:
+            self.reset_category_weights()
+
         for name, weight in weights.items():
             self.category_space.set_weight(name, weight)
 
@@ -637,6 +649,80 @@ class CriteriaSet:
 
         if not all([criteria[0].space is criterion.space for criterion in criteria]):
             raise ValueError("Criteria must share the same space of categories.")
+
+    ############################### Just for fun ######################################
+
+    @staticmethod
+    def make_me_a_coffee() -> None:
+        """Print an ASCII art coffee cup."""
+        print(
+            r"""
+                      (
+                        )     (
+                 ___...(-------)-....___
+             .-""       )    (          ""-.
+       .-'``'|-._             )         _.-|
+      /  .--.|   `""---...........---""`   |
+     /  /    |                             |
+     |  |    |                             |
+      \  \   |                             |
+       `\ `\ |       COFFEE                |
+         `\ `|                             |
+         _/ /\                             /
+        (__/  \                           /
+     _..---""` \                         /`""---.._
+  .-'           \                       /          '-.
+ :               `-.__             __.-'              :
+ :                  ) ""---...---"" (                 :
+  '._               `"--...___...--"`              _.'
+    \""--..__                              __..--""/
+     '._     \"""----.....______.....----\"""     _.'
+        `""--..,,_____            _____,,..--""`
+                      `\"""----\"""`
+
+            Joan G. Stark (Spunk)
+            """
+        )
+
+    @staticmethod
+    def make_me_a_tea() -> None:
+        """Print an ASCII art tea cup."""
+        print(
+            r"""
+                      (
+                        )     (
+                 ___...(-------)-....___
+             .-""       )    (          ""-.
+       .-'``'|-._             )         _.-|
+      /  .--.|   `""---...........---""`   |
+     /  /    |                             |
+     |  |    |                             |
+      \  \   |                             |
+       `\ `\ |           TEA               |
+         `\ `|                             |
+         _/ /\                             /
+        (__/  \                           /
+     _..---""` \                         /`""---.._
+  .-'           \                       /          '-.
+ :               `-.__             __.-'              :
+ :                  ) ""---...---"" (                 :
+  '._               `"--...___...--"`              _.'
+    \""--..__                              __..--""/
+     '._     \"""----.....______.....----\"""     _.'
+        `""--..,,_____            _____,,..--""`
+                      `\"""----\"""`
+
+            Joan G. Stark (Spunk)
+            """
+        )
+
+    @staticmethod
+    def make_world_peace() -> None:
+        """Print something witty instead of solving world peace."""
+        print(
+            "World peace requires consensus on weights nobody agrees on —\n"
+            "try `update_weight_profile()` first, it's more tractable."
+        )
 
 
 def _weight_bar(weight: float, width: int = 8) -> str:
