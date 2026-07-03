@@ -13,7 +13,6 @@ class MCDAApproach(Enum):
 def _saw(
     matrix: np.ndarray,
     weights: np.ndarray,
-    criteria_types: np.ndarray,
 ) -> np.ndarray:
     """Simple Additive Weighting.
 
@@ -31,14 +30,12 @@ def _saw(
     np.ndarray, shape (n_options,)
         SAW scores.
     """
-    signed = matrix * criteria_types  # flip minimization criteria
-    return signed @ weights
+    return matrix @ weights
 
 
 def _topsis(
     matrix: np.ndarray,
     weights: np.ndarray,
-    criteria_types: np.ndarray,
 ) -> np.ndarray:
     """Technique for Order of Preference by Similarity to Ideal Solution.
 
@@ -56,15 +53,11 @@ def _topsis(
     np.ndarray, shape (n_options,)
         TOPSIS closeness scores in [0, 1].
     """
-    weighted = matrix * weights
+    weighted = matrix * weights[np.newaxis]
 
     # Ideal best/worst depend on criterion direction
-    ideal_best = np.where(
-        criteria_types == 1, weighted.max(axis=0), weighted.min(axis=0)
-    )
-    ideal_worst = np.where(
-        criteria_types == 1, weighted.min(axis=0), weighted.max(axis=0)
-    )
+    ideal_best = weighted.max(axis=0)
+    ideal_worst = weighted.min(axis=0)
 
     d_best = np.linalg.norm(weighted - ideal_best, axis=1)
     d_worst = np.linalg.norm(weighted - ideal_worst, axis=1)

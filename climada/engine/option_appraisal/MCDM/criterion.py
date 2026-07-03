@@ -309,7 +309,7 @@ class CriteriaSet:
     def criteria(self) -> list[Criterion]:
         return self._criteria
 
-    def get_criteria(self, name):
+    def get_criterion(self, name):
         for crit in self.criteria:
             if crit.name == name:
                 return crit
@@ -324,7 +324,10 @@ class CriteriaSet:
 
     @property
     def criteria_types(self):
-        return np.array([1 if crit.obj_maximize else -1 for crit in self.criteria])
+        return pd.Series(
+            np.array([1 if crit.obj_maximize else -1 for crit in self.criteria]),
+            index=self.criteria_names,
+        )
 
     @property
     def criteria_weights(self):
@@ -367,7 +370,7 @@ class CriteriaSet:
         self,
         influence_from_categories: Optional[float] = None,
         non_zero_only: bool = True,
-    ) -> dict[str, float]:
+    ) -> pd.Series:
         """Compute weighted combination of base weight and category-derived weight.
 
         Parameters
@@ -382,7 +385,7 @@ class CriteriaSet:
 
         Returns
         -------
-        dict[str, float]
+        pd.Series
             Mapping of criterion name to total weight.
         """
         if influence_from_categories is None:
@@ -402,8 +405,9 @@ class CriteriaSet:
         }
 
         if non_zero_only:
-            return {k: v for k, v in weights.items() if v > 0}
-        return weights
+            return pd.Series({k: v for k, v in weights.items() if v > 0})
+
+        return pd.Series(weights)
 
     def get_criteria_by_category(
         self,
@@ -456,7 +460,9 @@ class CriteriaSet:
     ) -> pd.DataFrame:
         """Criteria matrix normalized using a scikit-learn-compatible scaler.
 
-        Only active criteria (non-zero total weight) are included.
+        Only active criteria (non-zero total weight) are included. Cost-type
+        criteria (``obj_maximize=False``) are negated before scaling, so that
+        higher values always indicate a better outcome post-normalization.
 
         Parameters
         ----------
@@ -474,11 +480,17 @@ class CriteriaSet:
             scaler = MinMaxScaler()
 
         matrix = self.active_criteria_matrix
-        return pd.DataFrame(
+        types = self.criteria_types.loc[matrix.columns]
+        cost_cols = types[types == -1].index
+        matrix[cost_cols] *= -1
+
+        x_norm = pd.DataFrame(
             scaler.fit_transform(matrix),
             index=matrix.index,
             columns=matrix.columns,
         )
+
+        return x_norm
 
     def score_matrix(
         self,
@@ -507,17 +519,11 @@ class CriteriaSet:
         fn = APPROACH_FN[approach]
 
         matrix = self.normalized_criteria_matrix(scaler=scaler)
-        active_criteria = [c for c in self.criteria if c.name in matrix.columns]
 
-        total_weights = self.effective_weights()
-        raw_weights = np.array([total_weights[c.name] for c in active_criteria])
+        raw_weights = self.effective_weights()
         weights = raw_weights / raw_weights.sum()  # normalise to sum=1
 
-        criteria_types = np.array(
-            [1 if c.obj_maximize else -1 for c in active_criteria]
-        )
-
-        scores = fn(matrix.values, weights, criteria_types)
+        scores = fn(matrix.values, weights.values)
         return pd.Series(scores, index=matrix.index, name=approach.value).sort_values(
             ascending=False
         )
@@ -548,7 +554,7 @@ class CriteriaSet:
         weight : float or str
             New weight value.
         """
-        crit = self.get_criteria(name)
+        crit = self.get_criterion(name)
         if crit is None:
             raise KeyError(f"Criterion '{name}' not found.")
         crit.weight = weight
