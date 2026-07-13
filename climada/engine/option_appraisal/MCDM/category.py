@@ -810,7 +810,7 @@ class CategorizedObject:
                 if not cat:
                     # Enforce that categories must be defined globally before being assigned to an object
                     raise ValueError(
-                        f"CriteriaCategory '{cat_to_add}' is not defined. Create it first with `CriteriaCategory.create_criteria_category()`"
+                        f"CriteriaCategory '{cat_to_add}' is not defined. Create it first with `CriteriaCategory.add_category()`"
                     )
                 self.categories.add(cat)
             else:

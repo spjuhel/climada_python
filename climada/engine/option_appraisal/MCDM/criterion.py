@@ -113,13 +113,9 @@ class CriteriaSet:
     def __init__(
         self,
         criteria: list[Criterion],
-        # category_weights: dict[str, float] | None = None,
-        # criteria_weights: dict[str, float] | None = None,
     ) -> None:
         self.criteria = criteria
         self._category_space = criteria[0].category_space
-        # self.criteria_base_weights = criteria_weights
-        # self.category_weights = category_weights
 
     ############################### Display and representation ######################################
 
